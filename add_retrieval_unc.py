@@ -8,7 +8,7 @@ import matplotlib as mpl
 mpl.use("WebAgg")
 import matplotlib.pyplot as plt
 
-drive_dir = "/mnt/d/"
+drive_dir = "/mnt/f/"
 test_ids = {'iwv': "060",
             'lwp': "031"}
 final_seeds = {'iwv': 110,
@@ -62,9 +62,9 @@ def plot_stats(
     y_lims = {'iwv_rmse': [0., 0.9],     # kg m-2
               'iwv_stddev': [0., 0.9],   # kg m-2
               'iwv_bias': [-0.4, 0.4],    # kg m-2
-              'lwp_rmse': [0., 30.],    # g m-2
-              'lwp_stddev': [0., 30.],  # g m-2
-              'lwp_bias': [-20., 20.],  # g m-2
+              'lwp_rmse': [0., 25.],    # g m-2
+              'lwp_stddev': [0., 25.],  # g m-2
+              'lwp_bias': [-15., 15.],  # g m-2
               }
     pred_error_unit = {'iwv': "kg$\,$m$^{-2}$",
                        'lwp': "g$\,$m$^{-2}$"}
@@ -74,7 +74,7 @@ def plot_stats(
     
     f1, axs = plt.subplot_mosaic(stat_varnames, figsize=(8,5), sharex=True)
     
-    plt.subplots_adjust(top=0.94, right=0.96, left=0.11, bottom=0.11, wspace=0)
+    plt.subplots_adjust(top=0.90, right=0.96, left=0.11, bottom=0.11, wspace=0)
     
     for key, ax in axs.items():
         
@@ -114,8 +114,9 @@ def plot_stats(
                 range_str = (range_tot[pred] + 
                              DS[f'{pred}_{stat_type}_bot'].range.split(')')[1])
             if pred == 'iwv': range_str = range_str.replace('mm', pred_error_unit[pred])
+            if pred == 'lwp': range_str = range_str.replace('kg m-2', 'kg$\,$m$^{-2}$')
             
-            ax.text(0.5, 1.01, stat_range.upper() + f": {range_str}", 
+            ax.text(0.5, 1.01, stat_range.upper() + f":\n{range_str}", 
                     ha='center', va='bottom',
                     fontweight='bold',
                     transform=ax.transAxes)
