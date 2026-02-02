@@ -357,7 +357,7 @@ def encode_time(
     
     time_values = (DS[time_var].values - reference_period).astype('timedelta64[s]').astype(np.float64)
     if time_var == time_dim:
-        DS[time_var][:] = time_values
+        DS[time_var] = time_values
     else:
         DS[time_var] = xr.DataArray(time_values, dims=time_dim)
     DS[time_var].attrs['units'] = f"seconds since {reference_period_str}"
@@ -372,7 +372,33 @@ def write_basic_attributes(DS: xr.Dataset):
     DS.attrs['institution'] = "Institute for Geophysics and Meteorology, University of Cologne, Cologne, Germany"
     DS.attrs['contact_person'] = "Andreas Walbroel (a.walbroel@uni-koeln.de)"
     DS.attrs['author'] = "Andreas Walbroel (a.walbroel@uni-koeln.de)"
-    DS.attrs['license'] = "For non-commercial use only."
+    DS.attrs['license'] = "CC BY-NC 4.0"
+    
+    return DS
+
+
+def update_netCDF_file_history(DS: xr.Dataset, script_name: str, summary_str="", histroy_attr='history'):
+
+    """
+    Updates the history of an xarray Dataset that shall be saved to a netCDF file.
+    
+    Parameters:
+    -----------
+    DS : xr.Dataset
+        Dataset to be saved and where the attribute is added.
+    script_name : str
+        Name of the script that was mainly used to update/modify DS.
+    summary_str : str
+        String that concisely describes the changes made to DS.
+    history_attr : str
+        Name of the attribute where the history of DS is described.
+    """
+
+    attr_add = ""
+    if ";" not in DS.attrs[histroy_attr][-2:]:
+        attr_add = "; "
+    DS.attrs[histroy_attr] += (f"{attr_add}{dt.datetime.now(dt.timezone.utc).strftime('%Y-%m-%d %H:%M:%S')}" +
+                               f", {summary_str} with {script_name}; ")
     
     return DS
 
