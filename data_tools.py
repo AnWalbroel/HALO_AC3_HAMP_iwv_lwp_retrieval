@@ -336,7 +336,8 @@ def encode_time(
     DS: xr.Dataset, 
     time_var='time', 
     time_dim='time', 
-    reference_period=np.datetime64("1970-01-01T00:00:00")):
+    reference_period=np.datetime64("1970-01-01T00:00:00"),
+    calendar="proleptic_gregorian"):
     
     """
     Encode the time dimension of a Dataset with respect to a given reference period.
@@ -351,6 +352,9 @@ def encode_time(
         Name of the time dimension of the variable to be encoded.
     reference_period : np.datetime64
         Reference period as np.datetime64 object, given in YYYY-MM-DDThh:mm:ss (ISO 8601).
+    calendar : str
+        String describing the calendar used. Numpy's datetime64 uses 'proleptic_gregorian'.
+        See also https://cfconventions.org/cf-conventions/cf-conventions.html#calendar .
     """
     
     reference_period_str = str(reference_period).replace("T", " ")
@@ -363,6 +367,9 @@ def encode_time(
     DS[time_var].attrs['units'] = f"seconds since {reference_period_str}"
     DS[time_var].encoding['units'] = f'seconds since {reference_period_str}'
     DS[time_var].encoding['dtype'] = 'double'
+    
+    if time_var == 'time': DS[time_var].attrs['standard_name'] = 'time'
+    DS[time_var].attrs['calendar'] = calendar
     
     return DS
 
