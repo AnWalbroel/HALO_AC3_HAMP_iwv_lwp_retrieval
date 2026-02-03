@@ -21,7 +21,6 @@ The retrieval has been trained for altitudes in 250 m bins covering the range wh
 - `halo_test_obs_comp.py`: a small fraction of HALO-(AC)<sup>3</sup> data was used for testing. This script was used to visualise it.
 - `import_data.py`: collection of importer routines (overly filled with functions from other projects)
 - `merge_era5_pamtra_output.py`: PAMTRA simulation output files that were executed for several different synthetic flight altitudes are merged
-- `merge_training_data.py`: ??????????????????????
 - `met_tools.py`: collection of meteorological functions and humidity conversions (overly filled with functions from other projects)
 - `nn_classes.py`: simple classes called by `NN_retrieval.py`
 - `NN_retrieval.py`: main script to train and apply the Neural Network retrieval
