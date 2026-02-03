@@ -15,7 +15,7 @@ from data_tools import (running_mean_pdtime, update_netCDF_file_history, encode_
 script_name = os.path.basename(__file__)
 
 
-drive_dir = "/mnt/f/"
+drive_dir = "/mnt/d/"
 test_ids = {'iwv': "060",
             'lwp': "031"}
 final_seeds = {'iwv': 110,
@@ -25,7 +25,7 @@ standard_name = {'iwv': "atmosphere_mass_content_of_water_vapor",
 long_names = {'iwv': "integrated water vapor or precipitable water",
               'lwp': "liquid water path or total liquid cloud water"}
 valid_ranges = {'iwv': np.array([0., 100.]),
-                'lwp': np.array([-0.2, 3.0])}
+                'lwp': np.array([-0.1, 3.0])}
 unit_conv_dict = {'iwv': [0., 1.],
                   'lwp': [0., 0.001]}       # g m-2 to kg m-2
 
@@ -59,25 +59,45 @@ def main():
         for ret_file in ret_files:
             DS = xr.open_dataset(ret_file).load()
             
-            if predictand == 'iwv':
-                DS[predictand][:] = running_mean_pdtime(DS[predictand].values, 10, DS.time.values)
-            if predictand == 'lwp':
-                DS = manual_lwp_offset_correction(DS)
-            
-            DS[predictand][:] = convert_units(DS[predictand], unit_conv_dict[predictand])
-            
-            DS = add_retrieval_uncertainties(DS, STAT_DS, predictand)
-            DS = add_quality_flags(DS, predictand)
-            DS = improve_attrs(DS, predictand=predictand)
-            
+            DS = post_process_retrieval_files(DS, STAT_DS, predictand)
             export_DS(DS, path_output)
-        
-        
-        
+
+
+
 def load_retrieval_stats(path: str, predictand='iwv'):
     
     file = path + f"HALO-AC3_NN_retrieval_eval_test_id_{test_ids[predictand]}.nc"
     DS = xr.open_dataset(file).load()
+    
+    return DS
+
+
+def post_process_retrieval_files(DS: xr.Dataset, STAT_DS: xr.Dataset, predictand='iwv'):
+    
+    """
+    Post process the retrieval output files by adding retrieval uncertainties, perform some final
+    smoothing and apply final corrections, add quality flags and improve attributes.
+    
+    Parameters:
+    -----------
+    DS : xr.Dataset
+        Dataset containing the retrieved quantity.
+    STAT_DS : xr.Dataset
+        Dataset containing the retrieval uncertainties.
+    predictand : str
+        String indicating the retrieved quantity.
+    """
+            
+    if predictand == 'iwv':
+        DS[predictand][:] = running_mean_pdtime(DS[predictand].values, 10, DS.time.values)
+    if predictand == 'lwp':
+        DS = manual_lwp_offset_correction(DS)
+    
+    DS[predictand][:] = convert_units(DS[predictand], unit_conv_dict[predictand])
+    
+    DS = add_retrieval_uncertainties(DS, STAT_DS, predictand)
+    DS = add_quality_flags(DS, predictand)
+    DS = improve_attrs(DS, predictand=predictand)
     
     return DS
 
@@ -226,22 +246,52 @@ def add_retrieval_uncertainties(DS: xr.Dataset, STAT_DS: xr.Dataset, predictand=
                                                                "to 2020. The uncertainty has been rounded up to the " +
                                                                f"next {str(unc_rounding[predictand])}.")})
     
-    for st_key in ['bot', 'mid', 'top']:
-        range_str = STAT_DS[f'{predictand}_rmse_{st_key}'].range.split('[')[1].split(")")[0]
-        range_0, range_1 = range_str.split(',')
-        range_0, range_1 = float(range_0), float(range_1)
-        stat_range = np.array([range_0, range_1])
-        
-        err_stat = np.ceil(STAT_DS[f'{predictand}_rmse_{st_key}'].mean('test_id').item() 
-                           / unc_rounding[predictand]) * unc_rounding[predictand]
-        err_stat = convert_units(err_stat, unit_conv_dict[predictand])
-        DS[f'{predictand}_err'][:] = xr.where((DS[predictand] >= stat_range[0]) & (DS[predictand] < stat_range[1]), 
-                                               err_stat,
+    err_stat = get_base_error_stats(STAT_DS, unc_rounding, predictand)
+    err_stat = refine_bins_err_stat(err_stat)
+    
+    for bin0, bin1, e_stat in zip(err_stat.range0.values, err_stat.range1.values, err_stat.values):
+        DS[f'{predictand}_err'][:] = xr.where((DS[predictand] >= bin0) & (DS[predictand] < bin1), 
+                                               e_stat,
                                                DS[f'{predictand}_err'].values)
-   
+    DS[f'{predictand}_err'][DS[predictand] < err_stat.range0.min()] = err_stat.isel(var_range=err_stat.range0.argmin()).item()
+    DS[f'{predictand}_err'][DS[predictand] > err_stat.range1.max()] = err_stat.isel(var_range=err_stat.range1.argmax()).item()
+    
     DS[f'{predictand}_err'].encoding["_FillValue"] = float(fillval)
     
     return DS
+
+
+def get_base_error_stats(STAT_DS: xr.Dataset, uncertainty_rounding: dict, predictand='iwv'):
+    
+    base_ranges = ['bot', 'mid', 'top']
+    n_ranges = len(base_ranges)
+    err_stat = xr.DataArray(np.zeros((n_ranges,), dtype=np.float32), dims=['var_range'],
+                            coords={'range0': (['var_range'], np.zeros((n_ranges,), dtype=np.float32)),
+                                    'range1': (['var_range'], np.zeros((n_ranges,), dtype=np.float32))})
+    for k, st_key in enumerate(base_ranges):
+        range_str = STAT_DS[f'{predictand}_rmse_{st_key}'].range.split('[')[1].split(")")[0]
+        range_0, range_1 = range_str.split(',')
+        range_0, range_1 = float(range_0), float(range_1)
+        err_stat['range0'][k] = float(range_0)
+        err_stat['range1'][k] = float(range_1)
+        
+        err_stat[k] = np.ceil(STAT_DS[f'{predictand}_rmse_{st_key}'].mean('test_id').item() 
+                              / uncertainty_rounding[predictand]) * uncertainty_rounding[predictand]
+        err_stat[k] = convert_units(err_stat[k], unit_conv_dict[predictand])
+        
+    return err_stat
+
+
+def refine_bins_err_stat(err_stat: xr.DataArray):
+    
+    range0_fine = np.linspace(0., err_stat.range0.max(), 100)
+    range1_fine = np.concatenate((range0_fine[1:], np.array([err_stat.range1.max()])))
+    err_stat_fine = np.interp(range0_fine, err_stat.range0.values, err_stat.values)
+    err_stat = xr.DataArray(err_stat_fine, dims=err_stat.dims,
+                            coords={'range0': (err_stat.range0.dims, range0_fine),
+                                    'range1': (err_stat.range1.dims, range1_fine)})
+    
+    return err_stat
 
 
 def add_quality_flags(DS: xr.Dataset, predictand: str):
@@ -259,6 +309,8 @@ def add_quality_flags(DS: xr.Dataset, predictand: str):
                                      'valid_range': np.array([0, 3], dtype=np.short),
                                      'comment': ("A value of 0 (or nan) means that the data has not been flagged. " +
                                                  "Any value > 0 should be used with care or discarded. " +
+                                                 "Visual inspection includes the look at time series of the retrieved " +
+                                                 "quantity, raw TBs, specMACS images and flight logs. " +
                                                  f"Retrieved quantity valid range: {valid_ranges_str[predictand]}; ")})
     
     sus_times = sus_times_visual_inspection(predictand)
@@ -326,7 +378,7 @@ def sus_times_visual_inspection(predictand='iwv'):
                               [np.datetime64("2022-03-16T14:35:20"), np.datetime64("2022-03-16T14:35:40")],
                               [np.datetime64("2022-03-16T14:38:00"), np.datetime64("2022-03-16T14:38:45")],
                               [np.datetime64("2022-03-16T16:16:55"), np.datetime64("2022-03-16T16:17:14")],
-                              [np.datetime64("2022-03-16T16:28:27"), np.datetime64("2022-03-16T16:28:40")],
+                              [np.datetime64("2022-03-16T16:28:10"), np.datetime64("2022-03-16T16:28:40")],
                               [np.datetime64("2022-03-16T16:30:50"), np.datetime64("2022-03-16T16:31:30")],
                               [np.datetime64("2022-03-16T16:34:40"), np.datetime64("2022-03-16T16:35:10")],
                               [np.datetime64("2022-03-16T16:40:20"), np.datetime64("2022-03-16T16:40:50")],
@@ -338,6 +390,7 @@ def sus_times_visual_inspection(predictand='iwv'):
                               [np.datetime64("2022-03-16T17:55:48"), np.datetime64("2022-03-16T18:02:00")],
                               [np.datetime64("2022-03-20T08:15:00"), np.datetime64("2022-03-20T08:27:48")],
                               [np.datetime64("2022-03-20T08:35:33"), np.datetime64("2022-03-20T08:36:08")],
+                              [np.datetime64("2022-03-20T10:02:12"), np.datetime64("2022-03-20T10:02:40")],
                               [np.datetime64("2022-03-20T12:55:00"), np.datetime64("2022-03-20T12:55:41")],
                               [np.datetime64("2022-03-20T13:09:31"), np.datetime64("2022-03-20T13:10:30")],
                               [np.datetime64("2022-03-20T13:15:04"), np.datetime64("2022-03-20T13:15:35")],
@@ -350,7 +403,7 @@ def sus_times_visual_inspection(predictand='iwv'):
                               [np.datetime64("2022-03-21T09:32:42"), np.datetime64("2022-03-21T09:33:13")],
                               [np.datetime64("2022-03-21T09:39:02"), np.datetime64("2022-03-21T09:39:43")],
                               [np.datetime64("2022-03-21T09:41:10"), np.datetime64("2022-03-21T09:42:22")],
-                              [np.datetime64("2022-03-21T09:44:05"), np.datetime64("2022-03-21T09:44:56")],
+                              [np.datetime64("2022-03-21T09:43:29"), np.datetime64("2022-03-21T09:44:56")],
                               [np.datetime64("2022-03-21T09:45:40"), np.datetime64("2022-03-21T09:45:58")],
                               [np.datetime64("2022-03-21T09:46:40"), np.datetime64("2022-03-21T09:47:04")],
                               [np.datetime64("2022-03-21T09:51:41"), np.datetime64("2022-03-21T09:52:00")],
@@ -530,6 +583,7 @@ def sus_times_visual_inspection(predictand='iwv'):
                               [np.datetime64("2022-04-10T11:41:56"), np.datetime64("2022-04-10T11:42:16")],
                               [np.datetime64("2022-04-10T11:43:03"), np.datetime64("2022-04-10T11:43:38")],
                               [np.datetime64("2022-04-10T11:43:47"), np.datetime64("2022-04-10T11:48:43")],
+                              [np.datetime64("2022-04-10T12:01:13"), np.datetime64("2022-04-10T12:01:42")],
                               [np.datetime64("2022-04-10T12:54:25"), np.datetime64("2022-04-10T12:54:53")],
                               [np.datetime64("2022-04-10T12:57:02"), np.datetime64("2022-04-10T12:57:40")],
                               [np.datetime64("2022-04-10T13:04:19"), np.datetime64("2022-04-10T13:05:08")],
@@ -595,6 +649,7 @@ def sus_times_visual_inspection(predictand='iwv'):
                               [np.datetime64("2022-03-21T16:01:08"), np.datetime64("2022-03-21T16:01:27")],
                               [np.datetime64("2022-03-21T16:06:40"), np.datetime64("2022-03-21T16:15:00")],
                               [np.datetime64("2022-03-28T08:55:00"), np.datetime64("2022-03-28T09:02:47")],
+                              [np.datetime64("2022-03-28T09:05:11"), np.datetime64("2022-03-28T09:05:50")],
                               [np.datetime64("2022-03-28T09:53:50"), np.datetime64("2022-03-28T10:00:33")],
                               [np.datetime64("2022-03-28T10:20:00"), np.datetime64("2022-03-28T10:30:00")],
                               [np.datetime64("2022-03-28T11:09:00"), np.datetime64("2022-03-28T11:10:14")],
@@ -634,6 +689,7 @@ def sus_times_visual_inspection(predictand='iwv'):
                               [np.datetime64("2022-04-01T12:01:46"), np.datetime64("2022-04-01T12:02:06")],
                               [np.datetime64("2022-04-01T12:51:30"), np.datetime64("2022-04-01T12:52:09")],
                               [np.datetime64("2022-04-01T13:54:00"), np.datetime64("2022-04-01T13:55:05")],
+                              [np.datetime64("2022-04-01T15:05:57"), np.datetime64("2022-04-01T15:06:17")],
                               [np.datetime64("2022-04-01T15:16:10"), np.datetime64("2022-04-01T15:30:00")],
                               [np.datetime64("2022-04-04T07:40:00"), np.datetime64("2022-04-04T07:46:46")],
                               [np.datetime64("2022-04-04T09:01:11"), np.datetime64("2022-04-04T09:01:36")],
@@ -680,7 +736,9 @@ def improve_attrs(DS: xr.Dataset, predictand: str):
     DS[predictand].attrs['valid_min'] = valid_ranges[predictand][0]
     DS[predictand].attrs['valid_max'] = valid_ranges[predictand][1]
     if predictand == 'iwv':
-        DS[predictand].attrs['comment'] += " A running mean of 10 s has been applied to reduce noise."
+        DS[predictand].attrs['comment'] += (" A running mean of 10 s has been applied to reduce noise. " +
+                                            "Still, on days with low-level convective clouds (mostly between 2022-03-21 " +
+                                            "and 2022-04-10), the IWV can be a bit noisy.")
     if predictand == 'lwp':
         DS[predictand].attrs['units'] = "kg m-2"
     
@@ -709,7 +767,6 @@ def export_DS(
     os.makedirs(path_output, exist_ok=True)
     
     DS = encode_time(DS)
-    DS['time'].attrs['standard_name'] = 'time'
     
     vars_fill_value = ['lat', 'lon', 'alt', 'iwv', 'lwp']
     vars_remove_fill_value = ['time', 'flag']
