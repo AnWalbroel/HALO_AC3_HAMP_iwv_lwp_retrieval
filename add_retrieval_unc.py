@@ -38,8 +38,8 @@ def main():
     
     path_plots_base = f"{drive_dir}Studium_NIM/work/Plots/HALO_AC3/lwp_retrieval/eval/"
     
-    visualise_stats = False
-    set_dict = {'save_figures': False}
+    visualise_stats = True
+    set_dict = {'save_figures': True}
     
     
     predictands = ['iwv', 'lwp']
