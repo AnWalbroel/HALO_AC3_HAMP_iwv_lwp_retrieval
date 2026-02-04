@@ -35,6 +35,13 @@ The final setting for the IWV retrieval was test case "060" and for the LWP retr
 Please also note that this code package and its documentation is not optimised for usage by other people. So if you do wish to run parts or all of the scripts, please contact the author (me: a.walbroel__at__uni-koeln.de).
 For performing forward simulations or training the retrieval, please contact the author of this code package as the documentation has not advanced beyond self-usability.
 
+The LWP retrieval uses an automatic clear sky offset correction to avoid biases due to water vapour signals (implemented in `NN_retrieval.py`). 
+Clear sky periods are detected using radar reflectivity thresholds (at least 5 range bins with `Ze > -40 dbZ` between 300 and 4000 m) 
+and 30-s max of std deviation of 30-s rolling mean MWR TBs must be < 0.5 K for all K+V+W+F HAMP channels. 
+Clear sky periods must be longer than 30 s to be used as base for LWP clear sky offset correction. Then, a 30-s rolling mean of LWP is
+computed. The values the rolling mean LWP takes during those clear sky periods can be used as LWP offset. Linear interpolation in between
+clear sky periods is used to compute the LWP offsets between clear sky periods if gap is less than 6 hours.
+
 ### Procedure of code execution
 `ERA5_pamtra_sim.py` --> `merge_era5_pamtra_output.py` --> `check_out_training_data.py` --> `training_data_new_height.py` --> `NN_retrieval.py` "031" --> `post_process_retrieval.py` "lwp" --> `NN_retrieval.py` "060" --> `post_process_retrieval.py` "iwv" --> `add_retrieval_unc.py`
 
