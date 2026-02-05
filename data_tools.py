@@ -377,9 +377,9 @@ def encode_time(
 def write_basic_attributes(DS: xr.Dataset):
     
     DS.attrs['institution'] = "Institute for Geophysics and Meteorology, University of Cologne, Cologne, Germany"
-    DS.attrs['contact_person'] = "Andreas Walbroel (a.walbroel@uni-koeln.de)"
-    DS.attrs['author'] = "Andreas Walbroel (a.walbroel@uni-koeln.de)"
-    DS.attrs['license'] = "CC BY-NC 4.0"
+    DS.attrs['contact'] = "Andreas Walbroel (a.walbroel@uni-koeln.de, https://orcid.org/0000-0003-2603-2724)"
+    DS.attrs['author'] = "Andreas Walbroel"
+    DS.attrs['license'] = "CC BY-NC 4.0, https://creativecommons.org/licenses/by-nc/4.0/"
     
     return DS
 

@@ -15,19 +15,8 @@ from data_tools import (running_mean_pdtime, update_netCDF_file_history, encode_
 script_name = os.path.basename(__file__)
 
 
-drive_dir = "/mnt/d/"
-test_ids = {'iwv': "060",
-            'lwp': "031"}
-final_seeds = {'iwv': 110,
-               'lwp': 773}
-standard_name = {'iwv': "atmosphere_mass_content_of_water_vapor",
-                 'lwp': "atmosphere_mass_content_of_cloud_liquid_water"}
-long_names = {'iwv': "integrated water vapor or precipitable water",
-              'lwp': "liquid water path or total liquid cloud water"}
-valid_ranges = {'iwv': np.array([0., 100.]),
-                'lwp': np.array([-0.1, 3.0])}
-unit_conv_dict = {'iwv': [0., 1.],
-                  'lwp': [0., 0.001]}       # g m-2 to kg m-2
+drive_dir = "/mnt/f/"
+
 
 def main():
     
@@ -97,6 +86,7 @@ def post_process_retrieval_files(DS: xr.Dataset, STAT_DS: xr.Dataset, predictand
     
     DS = add_retrieval_uncertainties(DS, STAT_DS, predictand)
     DS = add_quality_flags(DS, predictand)
+    DS = add_trajectory_id(DS)
     DS = improve_attrs(DS, predictand=predictand)
     
     return DS
@@ -316,10 +306,20 @@ def add_quality_flags(DS: xr.Dataset, predictand: str):
     sus_times = sus_times_visual_inspection(predictand)
     for sus_time in sus_times:
         DS['flag'][(DS.time >= sus_time[0]) & (DS.time <= sus_time[1])] += 1
-        
+    
     DS['flag'][(DS[predictand] > valid_ranges[predictand][1]) | (DS[predictand] < valid_ranges[predictand][0])] += 2
+    # DS['flag'] = convert_flag_dtype_int_to_byte(DS.flag)
     
     return DS
+
+
+def convert_flag_dtype_int_to_byte(flag: xr.DataArray):
+    
+    flag = flag.astype(np.bytes_)
+    for key in ['flag_masks', 'valid_range']:
+        flag.attrs[key] = flag.attrs[key].astype(np.bytes_)
+    
+    return flag
 
 
 def sus_times_visual_inspection(predictand='iwv'):
@@ -729,6 +729,17 @@ def sus_times_visual_inspection(predictand='iwv'):
     return sus_times
 
 
+def add_trajectory_id(DS: xr.Dataset):
+    
+    DS['trajectory'] = xr.DataArray(os.path.basename(DS.encoding['source']).split("_")[-2])
+    DS['trajectory'].attrs = {'cf_role': "trajectory_id",
+                              'long_name': "flight id"}
+    DS['trajectory'].encoding['dtype'] = '|S4'
+    DS['trajectory'].encoding['char_dim_name'] = "name_strlen"
+    
+    return DS
+
+
 def improve_attrs(DS: xr.Dataset, predictand: str):
     
     DS[predictand].attrs['long_name'] = long_names[predictand]
@@ -742,7 +753,7 @@ def improve_attrs(DS: xr.Dataset, predictand: str):
     if predictand == 'lwp':
         DS[predictand].attrs['units'] = "kg m-2"
     
-    DS.attrs['Title'] = (f"Retrieved {standard_name[predictand]} ({predictand}) from microwave radiometer " +
+    DS.attrs['Title'] = (f"Retrieved {title_names[predictand]} from microwave radiometer " +
                          "measurements of the HAMP package onboard the HALO research aircraft during HALO-(AC)3")
 
     DS = update_netCDF_file_history(DS, 
@@ -750,12 +761,33 @@ def improve_attrs(DS: xr.Dataset, predictand: str):
                                     summary_str="added retrieval uncertainties, quality flags and improved attributes",
                                     histroy_attr='History')
     
-    DS.attrs['Measurement_site'] = ("HALO-(AC)3, Wendisch et al., 2024: Overview: quasi-Lagrangian observations " +
-                                    "of Arctic air mass transformations - introduction and initial results of the " +
-                                    "HALO-(AC)3 aircraft campaign, Atmos. Chemp. Phys., 24 (15), 8865-8892, " +
-                                    "https://doi.org/10.5194/acp-24-8865-2024")
-    DS.attrs['Conventions'] = "CF-1.8"
-    DS.attrs['License'] = "CC BY-NC 4.0"
+    DS.attrs['Measurement_site'] = ("Arctic ocean, see references")
+    DS.attrs['References'] = ("measurement_site: Wendisch et al., 2024: Overview: quasi-Lagrangian observations " +
+                              "of Arctic air mass transformations - introduction and initial results of the " +
+                              "HALO-(AC)3 aircraft campaign, Atmos. Chemp. Phys., 24 (15), 8865-8892, " +
+                              "https://doi.org/10.5194/acp-24-8865-2024; " +
+                              "code: https://github.com/AnWalbroel/HALO_AC3_HAMP_iwv_lwp_retrieval; " +
+                              "ERA5: Copernicus Climate Change Service (), 2023: Complete ERA5 global atmospheric " +
+                              "reanalysis, Copernicus Climate Change Service (C3S) Climate Data Store (CDS), https://doi.org/" +
+                              "10.24381/cds.143582cf, Hersbach et al., 2017: Complete ERA5 from 1940: Fifth generation " +
+                              "of ECMWF atmospheric reanalyses of the global climate, " +
+                              "Copernicus Climate Change Service (C3S) Data Store (CDS), " +
+                              "https://doi.org/10.24381/cds.143582cf")
+    DS.attrs['Conventions'] = "CF-1.13"
+    DS.attrs['License'] = "CC BY-NC 4.0, https://creativecommons.org/licenses/by-nc/4.0/"
+    
+    DS.attrs = {key.lower() if key != 'Conventions' else key: val for key, val in DS.attrs.items()}
+    
+    DS.attrs['contact_person'] = "Andreas Walbroel (a.walbroel@uni-koeln.de, https://orcid.org/0000-0003-2603-2724)"
+    DS.attrs = {'contact' if key == 'contact_person' else key: val for key, val in DS.attrs.items()}
+    DS.attrs['author'] = "Andreas Walbroel"
+    
+    if len(DS.attrs['comments']) == 0: del DS.attrs['comments']
+    DS.attrs['project'] = ("DFG (German Research Foundation) project number 268020496 - TRR 172, Transregional " +
+                           "Collaborative Research Center 'ArctiC Amplification: Climate Relevant Atmospheric " +
+                           "and SurfaCe Processes, and Feedback Mechanisms (AC)3")
+    DS.attrs['featureType'] = "trajectory"
+    
     
     return DS
 
@@ -766,7 +798,7 @@ def export_DS(
     
     os.makedirs(path_output, exist_ok=True)
     
-    DS = encode_time(DS)
+    DS = encode_time(DS, reference_period=np.datetime64("2022-01-01T00:00:00"))
     
     vars_fill_value = ['lat', 'lon', 'alt', 'iwv', 'lwp']
     vars_remove_fill_value = ['time', 'flag']
@@ -786,4 +818,20 @@ def export_DS(
 
 
 if __name__ == '__main__':
+    
+    test_ids = {'iwv': "060",
+                'lwp': "031"}
+    final_seeds = {'iwv': 110,
+                'lwp': 773}
+    standard_name = {'iwv': "atmosphere_mass_content_of_water_vapor",
+                    'lwp': "atmosphere_mass_content_of_cloud_liquid_water"}
+    long_names = {'iwv': "integrated water vapor or precipitable water",
+                'lwp': "liquid water path or total liquid cloud water"}
+    title_names = {'iwv': "integrated water vapor (iwv)",
+                   'lwp': "liquid water path (lwp)"}
+    valid_ranges = {'iwv': np.array([0., 100.]),
+                    'lwp': np.array([-0.1, 3.0])}
+    unit_conv_dict = {'iwv': [0., 1.],
+                    'lwp': [0., 0.001]}       # g m-2 to kg m-2
+    
     main()
