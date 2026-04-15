@@ -774,7 +774,7 @@ def improve_attrs(DS: xr.Dataset, predictand: str):
                               "Copernicus Climate Change Service (C3S) Data Store (CDS), " +
                               "https://doi.org/10.24381/cds.143582cf")
     DS.attrs['Conventions'] = "CF-1.13"
-    DS.attrs['License'] = "CC BY-NC 4.0, https://creativecommons.org/licenses/by-nc/4.0/"
+    DS.attrs['Licence'] = "CC BY-NC 4.0, https://creativecommons.org/licenses/by-nc/4.0/"
     
     DS.attrs = {key.lower() if key != 'Conventions' else key: val for key, val in DS.attrs.items()}
     

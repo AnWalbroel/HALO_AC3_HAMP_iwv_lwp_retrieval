@@ -379,12 +379,17 @@ def write_basic_attributes(DS: xr.Dataset):
     DS.attrs['institution'] = "Institute for Geophysics and Meteorology, University of Cologne, Cologne, Germany"
     DS.attrs['contact'] = "Andreas Walbroel (a.walbroel@uni-koeln.de, https://orcid.org/0000-0003-2603-2724)"
     DS.attrs['author'] = "Andreas Walbroel"
-    DS.attrs['license'] = "CC BY-NC 4.0, https://creativecommons.org/licenses/by-nc/4.0/"
+    DS.attrs['licence'] = "CC BY-NC 4.0, https://creativecommons.org/licenses/by-nc/4.0/"
     
     return DS
 
 
-def update_netCDF_file_history(DS: xr.Dataset, script_name: str, summary_str="", histroy_attr='history'):
+def update_netCDF_file_history(
+    DS: xr.Dataset, 
+    script_name: str, 
+    summary_str="", 
+    history_attr='history',
+    history_attr_exists=True):
 
     """
     Updates the history of an xarray Dataset that shall be saved to a netCDF file.
@@ -399,12 +404,17 @@ def update_netCDF_file_history(DS: xr.Dataset, script_name: str, summary_str="",
         String that concisely describes the changes made to DS.
     history_attr : str
         Name of the attribute where the history of DS is described.
+    history_attr_exists : bool
+        Boolean indicating whether the hisotry attribute already exists. If False,
+        it's created.
     """
+    
+    if not history_attr_exists: DS.attrs[history_attr] = ""
 
     attr_add = ""
-    if ";" not in DS.attrs[histroy_attr][-2:]:
+    if history_attr_exists and (";" not in DS.attrs[history_attr][-2:]):
         attr_add = "; "
-    DS.attrs[histroy_attr] += (f"{attr_add}{dt.datetime.now(dt.timezone.utc).strftime('%Y-%m-%d %H:%M:%S')}" +
+    DS.attrs[history_attr] += (f"{attr_add}{str(np.datetime64('now')).replace('T', ' ')}" +
                                f", {summary_str} with {script_name}; ")
     
     return DS
@@ -519,31 +529,20 @@ def break_str_into_lines(
     return le_string
 
 
-def identify_files_daterange(path: str, daterange: np.ndarray, file_pattern="", yyyymmdd_delim=""):
+def lowercase_letter_from_number(ix: int):
     
-    """    
+    """
+    Returns the (ix+1)-th lower case letter of the alphabet (ix=0 -> a, ix=1 ->b, ...).
+    
     Parameters:
     -----------
-    path : str
-        Full path where files containing the data are located.
-    daterange : np.ndarray
-        Array of np.datetime64 indicating the date range.
-    file_pattern : str
-        String indicating the file pattern of the data.
-    yyyymmdd_delim : str
-        Delimiter used between year, month and days in the date strings of the data files.
+    ix : int
+        Integer for indexing the alphabet (0 == a, 1 == b, ...).
     """
     
-    daterange = daterange.astype('datetime64[D]')
-
-    files = list()
-    for date in daterange:
-        date_str = str(date).replace("-", yyyymmdd_delim)
-        file = glob.glob(path + file_pattern.replace("__DATE_STRING__", date_str))
-        if len(file) >= 1:
-            files.extend(file)
+    base = ord('a')
     
-    return files
+    return chr(base + ix)
 
 
 def bin_to_dec(b_in):
@@ -1457,6 +1456,50 @@ def find_files_daterange(
     return files
 
 
+def identify_files_daterange(path: str, daterange: np.ndarray, file_pattern: str, yyyymmdd_delim=""):
+    
+    """    
+    Parameters:
+    -----------
+    path : str
+        Full path where files containing the data are located.
+    daterange : np.ndarray
+        Array of np.datetime64 indicating the date range.
+    file_pattern : str
+        String indicating the file pattern of the data.
+    yyyymmdd_delim : str
+        Delimiter used between year, month and days in the date strings of the data files.
+    """
+    
+    daterange = daterange.astype('datetime64[D]')
+
+    files = list()
+    for date in daterange:
+        date_str = str(date).replace("-", yyyymmdd_delim)
+        file = glob.glob(path + file_pattern.replace("__DATE_STRING__", date_str))
+        if len(file) >= 1:
+            files.extend(file)
+    
+    return files
+
+
+def handle_daterange_or_date_start_end(
+    daterange=None, 
+    date0=None, 
+    date1=None,
+    default_daterange=np.array([np.datetime64("2000-01-01")])):
+    
+    if (daterange is None) and (date0 is None) and (date1 is None):
+        daterange = default_daterange
+    elif (daterange is None) and ((date0 is not None) and (date1 is not None)):
+        daterange = np.arange(np.datetime64(date0), np.datetime64(date1) + np.timedelta64(1, "D"),
+                              np.timedelta64(1, "D"))
+    elif (daterange is None) and (date0 is not None) and (date1 is None):
+        daterange = np.array([np.datetime64(date0)])
+        
+    return daterange
+
+
 def find_files_in_daily_dirs(
     path: str, 
     date_range, 
@@ -1541,77 +1584,6 @@ def vector_intersection_2d(
         nn = (B1x - A1x + mm*(B2x - B1x)) / (A2x - A1x)
 
     return mm, nn
-
-
-def change_colormap_len(
-    cmap, 
-    n_new,
-    to_listed_cmap=True):
-
-    """
-    Changes the number of colours of a given colourmap (cmap) to the number given by n_new.
-
-    Parameters:
-    -----------
-    cmap : matplotlib.colors element
-        Colourmap used by matplotlib.
-    n_new : int
-        Number of colours the new colourmap should have ('length of colourmap').
-    to_listed_cmap : bool
-        If true, returns a mpl.colors.ListedColormap object. If False, returns an array of 
-        RGB-alpha values.
-    """
-
-    import matplotlib as mpl
-
-    len_cmap = cmap.shape[0]    # length of colourmap
-    n_rgba = cmap.shape[1]      # rgb + alpha
-
-    cmap_new = np.zeros((n_new, n_rgba))
-    for m in range(n_rgba):
-        cmap_new[:,m] = np.interp(np.linspace(0, 1, n_new), np.linspace(0, 1, len_cmap), cmap[:,m])
-
-    if to_listed_cmap: cmap_new = mpl.colors.ListedColormap(cmap_new)
-
-    return cmap_new
-
-
-def get_cm_cmap(name: str, to_listed_cmap=False):
-    
-    from cmcrameri import cm
-    cmap = cm.__dict__[name](range(len(cm.__dict__[name].colors)))
-    if to_listed_cmap:
-        return mpl.colors.ListedColormap(cmap)
-    else:
-        return cmap
-
-
-def stack_cm_cmaps(bounds: np.ndarray, cmap_names: list, breakpoints=np.array([])):
-    
-    """
-    Merge two or more cmaps into one by stacking them. Breakpoints indicating
-    at which points to switch from one to the next colourmap can be provided.
-    """
-    
-    cmap_tuple = tuple([get_cm_cmap(cmap_name) for cmap_name in cmap_names])
-    n_breaks = len(breakpoints)
-    if n_breaks > 0:
-        bounds_broken = list()
-        for k, breakpoint in enumerate(breakpoints):
-            if k == 0:
-                bounds_broken.append(bounds[bounds < breakpoint])
-            else:
-                bounds_broken.append(bounds[(bounds >= breakpoints[k-1]) & (bounds < breakpoint)])
-            
-            if k == n_breaks-1:
-                bounds_broken.append(bounds[bounds >= breakpoint])
-        cmap_tuple = tuple([change_colormap_len(cmap, len(br_bound), False) for 
-                             cmap, br_bound in zip(cmap_tuple, bounds_broken)])
-    
-    cmap_merged = np.vstack(cmap_tuple)
-    cmap_merged = change_colormap_len(cmap_merged, len(bounds))
-    
-    return cmap_merged
 
 
 def sigmoid(x):
