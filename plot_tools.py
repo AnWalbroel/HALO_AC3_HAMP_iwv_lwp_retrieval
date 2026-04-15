@@ -90,12 +90,14 @@ def create_colourbar(
     fig: mpl.figure.Figure, 
     axis: mpl.axes.Axes, 
     image, 
-    cb_label: str,
-    cbar_width=0.03):
+    cb_label: str, 
+    xpad=0.0, 
+    cbwidth=0.03, 
+    cb_kwargs=dict()):
     
     x0, y0, width, height = axis.get_position().bounds
-    cax = fig.add_axes([x0+width, y0, cbar_width, height])
-    cb = fig.colorbar(mappable=image, cax=cax, orientation='vertical')
+    cax = fig.add_axes([x0+width+xpad, y0, cbwidth, height])
+    cb = fig.colorbar(mappable=image, cax=cax, orientation='vertical', **cb_kwargs)
     cb.set_label(cb_label)
     
     return fig, axis
