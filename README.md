@@ -9,7 +9,7 @@ This code package can be used to
 - train the Neural Network to retrieve IWV and LWP
 - evaluate the Neural Network retrieval
 - apply Neural Network retrieval to HALO-(AC)<sup>3</sup> observations
-- generate the output files published to PANGAEA **[4]**
+- generate the output files published to PANGAEA **[4,5]**
 
 The retrieval has been trained for altitudes in 250 m bins covering the range where HALO operated most of the time during HALO-(AC)<sup>3</sup> (8000-13500 m above mean sea level). 
 
@@ -69,4 +69,6 @@ Note that `NN_retrieval.py` is executed with the variable `exec_type` set to 'op
 
 **[3]**: Mech, M., et al. (2020): PAMTRA 1.0: the Passive and Active Microwave radiative TRAnsfer tool for simulating radiometer and radar measurements of the cloudy atmosphere, Geosci. Model Dev., 13 (9), 4229-4251, https://doi.org/10.5194/gmd-13-4229-2020
 
-**[4]**: added when available
+**[4]**: Walbröl, A., Dorff, H., Crewell, S. (2026): Liquid water path derived from passive microwave measurements over open ocean during the HALO-(AC)³ Campaign in Spring 2022 [dataset]. PANGAEA, https://doi.org/10.1594/PANGAEA.992918
+
+**[5]**: Walbröl, A., Dorff, H., Crewell, S. (2026): Integrated water vapour derived from passive microwave measurements over open ocean during the HALO-(AC)³ Campaign in Spring 2022 [dataset]. PANGAEA, https://doi.org/10.1594/PANGAEA.992898
