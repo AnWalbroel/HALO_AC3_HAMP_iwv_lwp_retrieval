@@ -239,6 +239,100 @@ def running_mean_time_2D(x, N, t, axis=0):
     return x_m
 
 
+def cumsum_with_reset_xr(data: xr.DataArray, dim=None, counter_reset_val=0):
+    
+    """
+    Compute the cumulative sum over the dimension 'dim' that resets when False is encountered 
+    in the data. 
+    
+    Parameters:
+    -----------
+    data : xr.DataArray
+        Data for which the cumulative sum is computed over a certain dimension.
+    dim : str
+        Name of the dimension over which to compute the cumulative sum.
+    counter_reset_val : int
+        Value to which the cumulative sum is reset once False is encountered in the data.
+    """
+    
+    axis, _ = get_axis_from_dim_or_vice_versa(da=data, dim=dim)
+    
+    cumsum = data.cumsum(dim)
+    reset_vals = xr.where(~data, cumsum, counter_reset_val)
+    reset_vals[...] = np.maximum.accumulate(reset_vals.values, axis=axis)
+    cumsum = cumsum - reset_vals
+    
+    return cumsum
+
+
+def compute_fft1d_along_dimension(
+    da: xr.DataArray, 
+    axis=None, 
+    dim=None, 
+    compute_freq_spectrum=True,
+    smpl_interval=None,
+    fft_freq_unit=""):
+    
+    """
+    Apply discrete Fast Fourier Transform (fft) to a 2D data array (da) for each index of a given axis. 
+    The axis can also be inferred from the dimension name of the input data array (da).
+    
+    Parameters:
+    -----------
+    da : xr.DataArray
+        Data array for which to compute fft for each index of a given dimension or axis.
+    axis : int or None
+        Axis number of the data array (da) for whose indices ffts are computed.
+    dim : str or None
+        Name of the dimension for whose indices the ffts are computed.
+    compute_freq_spectrum : bool
+        Whether or not to compute the frequency spectrum of the Fourier Transform. Will be used as
+        coordinate of the dimension over which fft is computed if True.
+    smpl_interval : float or None
+        Sample interval of the data stored in the data array (1/measurement_frequency or
+        1/sample_rate) over which the fft is computed (note, != dim). Used to compute the frequency
+        spectrum for the fft(s).
+    fft_freq_unit : str
+        String describing the unit of the frequency spectrum of the fft.
+    """
+    
+    n_data = da.shape[axis]
+    fft_da = xr.DataArray(np.empty(da.shape, dtype=np.complex128),
+                           dims=[dim, 'fft_freq'],
+                           coords={dim: da.coords[da.dims[axis]]})
+    
+    for k in range(n_data):
+        fft_da[{dim: k}] = np.fft.fft(da.isel({dim: k}))
+
+    if compute_freq_spectrum:
+        
+        if smpl_interval is None: smpl_interval = 1.0
+        
+        fft_axes = np.arange(fft_da.ndim)
+        n_fft = fft_da.shape[fft_axes[fft_axes != axis][0]]
+        frequency_spectrum = np.fft.fftfreq(n_fft, d=smpl_interval)
+        fft_da = fft_da.assign_coords({'fft_freq': (['fft_freq'], frequency_spectrum)})
+        fft_da['fft_freq'].attrs['units'] = fft_freq_unit
+        
+    return fft_da
+
+
+def get_axis_from_dim_or_vice_versa(
+    da: xr.DataArray,
+    axis=None, 
+    dim=None,
+    error_mssg=""):
+    
+    if (dim is None) and (axis is not None):
+        dim = da.dims[axis]
+    elif (axis is None) and (dim is not None):
+        axis = da.get_axis_num(dim)
+    elif (axis is None) and (dim is None):
+        raise ValueError(error_mssg)
+        
+    return axis, dim
+
+
 def datetime_to_epochtime(dt_array):
     
     """
